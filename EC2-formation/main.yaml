@@ -1,0 +1,134 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description:
+  this is banking app using s3 lambda
+
+
+Resources:
+
+  vpcforec2:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.192.0.0/16
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref vpcforec2
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref vpcforec2
+      AvailabilityZone: us-east-1a
+      CidrBlock: 10.192.10.0/24 
+      MapPublicIpOnLaunch: true
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref vpcforec2
+      AvailabilityZone: us-east-1b
+      CidrBlock: 10.192.11.0/24
+      MapPublicIpOnLaunch: true
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref vpcforec2
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  RouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  RouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to client host
+      VpcId: !Ref vpcforec2
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 0
+          CidrIp: 0.0.0.0/0
+
+  myInstance:
+     Type: 'AWS::EC2::Instance'
+     Properties: 
+        ImageId: ami-0c7217cdde317cfec
+        InstanceType: t2.micro
+        SubnetId: !Ref PublicSubnet1
+        SecurityGroupIds: 
+          - !Ref InstanceSecurityGroup
+        UserData:
+          Fn::Base64:  |
+             
+                      #!/bin/bash
+                      apt update
+                      apt install -y apache2
+
+                      # Get the instance ID using the instance metadata
+                      INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+
+                      # Install the AWS CLI
+                      apt install -y awscli
+
+                      # Download the images from S3 bucket
+                      #aws s3 cp s3://myterraformprojectbucket2023/project.webp /var/www/html/project.png --acl public-read
+
+                      # Create a simple HTML file with the portfolio content and display the images
+                      cat <<EOF > /var/www/html/index.html
+                      <!DOCTYPE html>
+                      <html>
+                      <head>
+                        <title>My Portfolio</title>
+                        <style>
+                          /* Add animation and styling for the text */
+                          @keyframes colorChange {
+                            0% { color: red; }
+                            50% { color: green; }
+                            100% { color: blue; }
+                          }
+                          h1 {
+                            animation: colorChange 2s infinite;
+                          }
+                        </style>
+                      </head>
+                      <body>
+                        <h1>Mavenir Server 1</h1>
+                        <h2>Instance ID: <span style="color:green">$INSTANCE_ID</span></h2>
+                        <p>created my gowtham</p>
+                        
+                      </body>
+                      </html>
+                      EOF
+
+                      # Start Apache and enable it on boot
+                      systemctl start apache2
+                      systemctl enable apache2             
